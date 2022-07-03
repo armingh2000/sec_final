@@ -1,68 +1,3 @@
-AES_KEY_SIZE = 16
-HMAC_KEY_SIZE = 16
-IV_SIZE = 16
-
-SALT_SIZE = 16
-HMAC_SIZE = 32
-
-def get_key_iv(password, salt, workload=100000):
-    """
-    Stretches the password and extracts an AES key, an HMAC key and an AES
-    initialization vector.
-    """
-    stretched = pbkdf2_hmac('sha256', password, salt, workload, AES_KEY_SIZE + IV_SIZE + HMAC_KEY_SIZE)
-    aes_key, stretched = stretched[:AES_KEY_SIZE], stretched[AES_KEY_SIZE:]
-    hmac_key, stretched = stretched[:HMAC_KEY_SIZE], stretched[HMAC_KEY_SIZE:]
-    iv = stretched[:IV_SIZE]
-    return aes_key, hmac_key, iv
-
-
-def encrypt(key, plaintext, workload=100000):
-    """
-    Encrypts `plaintext` with `key` using AES-128, an HMAC to verify integrity,
-    and PBKDF2 to stretch the given key.
-    The exact algorithm is specified in the module docstring.
-    """
-    if isinstance(key, str):
-        key = key.encode('utf-8')
-    if isinstance(plaintext, str):
-        plaintext = plaintext.encode('utf-8')
-
-    salt = os.urandom(SALT_SIZE)
-    key, hmac_key, iv = get_key_iv(key, salt, workload)
-    ciphertext = AES(key).encrypt_cbc(plaintext, iv)
-    hmac = new_hmac(hmac_key, salt + ciphertext, 'sha256').digest()
-    assert len(hmac) == HMAC_SIZE
-
-    return hmac + salt + ciphertext
-
-
-def decrypt(key, ciphertext, workload=100000):
-    """
-    Decrypts `ciphertext` with `key` using AES-128, an HMAC to verify integrity,
-    and PBKDF2 to stretch the given key.
-    The exact algorithm is specified in the module docstring.
-    """
-
-    assert len(ciphertext) % 16 == 0, "Ciphertext must be made of full 16-byte blocks."
-
-    assert len(ciphertext) >= 32, """
-    Ciphertext must be at least 32 bytes long (16 byte salt + 16 byte block). To
-    encrypt or decrypt single blocks use `AES(key).decrypt_block(ciphertext)`.
-    """
-
-    if isinstance(key, str):
-        key = key.encode('utf-8')
-
-    hmac, ciphertext = ciphertext[:HMAC_SIZE], ciphertext[HMAC_SIZE:]
-    salt, ciphertext = ciphertext[:SALT_SIZE], ciphertext[SALT_SIZE:]
-    key, hmac_key, iv = get_key_iv(key, salt, workload)
-
-    expected_hmac = new_hmac(hmac_key, salt + ciphertext, 'sha256').digest()
-    assert compare_digest(hmac, expected_hmac), 'Ciphertext corrupted or tampered.'
-
-    return AES(key).decrypt_cbc(ciphertext, iv)
-
 s_box = (
     0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
     0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0,
@@ -341,8 +276,7 @@ class AES:
             blocks.append(xor_bytes(previous, self.decrypt_block(ciphertext_block)))
             previous = ciphertext_block
 
-        # return unpad(b''.join(blocks))
-        return b''.join(blocks)
+        return unpad(b''.join(blocks))
 
 
 import os
@@ -353,95 +287,14 @@ from base64 import b64encode
 def dec(text):
     return b64encode(text)
 
-from math import log
-
-def load_dict():
-    words = open("words-by-frequency.txt").read().split()
-    lw = log(len(words))
-    wordcost = dict((k, log((i+1)*lw)) for i,k in enumerate(words))
-    maxword = max(len(x) for x in words)
-
-    return wordcost, maxword
-
-
-def infer_spaces(s):
-    def best_match(i):
-        candidates = enumerate(reversed(cost[max(0, i-maxword):i]))
-        return min((c + wordcost.get(s[i-k-1:i], 9e999), k+1) for k,c in candidates)
-
-    cost = [0]
-    for i in range(1,len(s)+1):
-        c,k = best_match(i)
-        cost.append(c)
-    out = []
-    i = len(s)
-    while i>0:
-        c,k = best_match(i)
-        assert c == cost[i]
-        out.append(s[i-k:i])
-        i -= k
-
-    return " ".join(reversed(out))
-
-def affine():
-    arr1d=[]
-    for x in range(26):
-        if x%2 != 0 and x!=13:
-            for y in range(26):
-                HoldAlphabet =[]
-                # for i in range(26):
-                #     HoldAlphabet.append(alphabet[(y+i*x)%26])
-
-                # dicts = {}
-                # for j in range(26):
-                #     dicts[HoldAlphabet[j]] = alphabet[j]
-
-                # cipherHold = cipher.translate(str.maketrans(dicts))
-
-                try:
-                    # for c in cipher:
-                    #     if c*x + y not in list(range(ord('a'), ord('z')+1)) + [ord(' ')]:
-                    #         raise Exception("FUCK DIANAT")
-
-                    cipherHold = ''.join(chr(c*x + y) for c in cipher)
-                    hold = infer_spaces(cipherHold.lower())
-                    arr1d.append(hold)
-                except:
-                    pass
-
-    index = 0
-    HoldZero = len(cipher)*2
-    for i in range(len(arr1d)):
-        if HoldZero > len(arr1d[i]):
-            HoldZero = len(arr1d[i])
-            index = i
-    print(arr1d[index])
-
-
-
-
-
 if __name__ == '__main__':
     key = b'qwertyuioplkjhgf'
     iv = b'rostamshayanarmi'
-    plain = b'attack on dianat'
+    plain = b'long live security'
     encrypted = AES(key).encrypt_cbc(plain, iv)
-    print(dec(encrypted))
+    print(f'encrypted text in base64: {dec(encrypted)}')
     decrypted = AES(key).decrypt_cbc(encrypted, iv)
-    print(decrypted)
-    print(len(plain))
-    print(key.decode('utf-8'))
-    print(iv.decode('utf-8'))
-
-    # alphabet = "abcdefghijklmnopqrstuvwxyz"
-    wordcost, maxword = load_dict()
-    cipher = encrypted
-
-    affine()
-    # text = 'Attack on dianat'
-    # encrypted = encrypt(key, text)
-    # print(dec(encrypted))
-    # decrypted = decrypt(key, encrypted)
-    # print(dec(decrypted))
-
+    print(f'decrypted text in utf-8: {decrypted}')
+    print(f'key in byte: {key}')
+    print(f'iv in byte: {iv}')
 
