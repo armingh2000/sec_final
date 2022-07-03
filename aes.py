@@ -82,7 +82,7 @@ s_box = (
     0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16,
 )
 
-#s_box = tuple([0x22 for i in range(256)])
+# s_box = tuple([0x1 for i in range(256)])
 
 inv_s_box = (
     0x52, 0x09, 0x6A, 0xD5, 0x30, 0x36, 0xA5, 0x38, 0xBF, 0x40, 0xA3, 0x9E, 0x81, 0xF3, 0xD7, 0xFB,
@@ -103,7 +103,7 @@ inv_s_box = (
     0x17, 0x2B, 0x04, 0x7E, 0xBA, 0x77, 0xD6, 0x26, 0xE1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0C, 0x7D,
 )
 
-#inv_s_box = tuple([0x12 for i in range(256)])
+# inv_s_box = tuple([0x1 for i in range(256)])
 
 def sub_bytes(s):
     for i in range(4):
@@ -186,12 +186,15 @@ def xor_bytes(a, b):
     """ Returns a new byte array with the elements xor'ed. """
     return bytes(i^j for i, j in zip(a, b))
 
+padding_len = 0
+
 def pad(plaintext):
     """
     Pads the given plaintext with PKCS#7 padding to a multiple of 16 bytes.
     Note that if the plaintext size is a multiple of 16,
     a whole block will be added.
     """
+    global padding_len
     padding_len = 16 - (len(plaintext) % 16)
     padding = bytes([padding_len] * padding_len)
     return plaintext + padding
@@ -201,10 +204,10 @@ def unpad(plaintext):
     Removes a PKCS#7 padding, returning the unpadded text and ensuring the
     padding was correct.
     """
-    padding_len = plaintext[-1]
+    # padding_len = plaintext[-1]
     assert padding_len > 0
     message, padding = plaintext[:-padding_len], plaintext[-padding_len:]
-    assert all(p == padding_len for p in padding)
+    # assert all(p == padding_len for p in padding)
     return message
 
 def split_blocks(message, block_size=16, require_padding=True):
@@ -338,7 +341,9 @@ class AES:
             blocks.append(xor_bytes(previous, self.decrypt_block(ciphertext_block)))
             previous = ciphertext_block
 
-        return unpad(b''.join(blocks))
+        # return unpad(b''.join(blocks))
+        return b''.join(blocks)
+
 
 import os
 from hashlib import pbkdf2_hmac
@@ -348,19 +353,95 @@ from base64 import b64encode
 def dec(text):
     return b64encode(text)
 
+from math import log
+
+def load_dict():
+    words = open("words-by-frequency.txt").read().split()
+    lw = log(len(words))
+    wordcost = dict((k, log((i+1)*lw)) for i,k in enumerate(words))
+    maxword = max(len(x) for x in words)
+
+    return wordcost, maxword
+
+
+def infer_spaces(s):
+    def best_match(i):
+        candidates = enumerate(reversed(cost[max(0, i-maxword):i]))
+        return min((c + wordcost.get(s[i-k-1:i], 9e999), k+1) for k,c in candidates)
+
+    cost = [0]
+    for i in range(1,len(s)+1):
+        c,k = best_match(i)
+        cost.append(c)
+    out = []
+    i = len(s)
+    while i>0:
+        c,k = best_match(i)
+        assert c == cost[i]
+        out.append(s[i-k:i])
+        i -= k
+
+    return " ".join(reversed(out))
+
+def affine():
+    arr1d=[]
+    for x in range(26):
+        if x%2 != 0 and x!=13:
+            for y in range(26):
+                HoldAlphabet =[]
+                # for i in range(26):
+                #     HoldAlphabet.append(alphabet[(y+i*x)%26])
+
+                # dicts = {}
+                # for j in range(26):
+                #     dicts[HoldAlphabet[j]] = alphabet[j]
+
+                # cipherHold = cipher.translate(str.maketrans(dicts))
+
+                try:
+                    # for c in cipher:
+                    #     if c*x + y not in list(range(ord('a'), ord('z')+1)) + [ord(' ')]:
+                    #         raise Exception("FUCK DIANAT")
+
+                    cipherHold = ''.join(chr(c*x + y) for c in cipher)
+                    hold = infer_spaces(cipherHold.lower())
+                    arr1d.append(hold)
+                except:
+                    pass
+
+    index = 0
+    HoldZero = len(cipher)*2
+    for i in range(len(arr1d)):
+        if HoldZero > len(arr1d[i]):
+            HoldZero = len(arr1d[i])
+            index = i
+    print(arr1d[index])
+
+
+
+
+
 if __name__ == '__main__':
     key = b'qwertyuioplkjhgf'
     iv = b'rostamshayanarmi'
-    #encrypted = AES(key).encrypt_cbc(b'Attack on dianat', iv)
-    #print(dec(encrypted))
-    #decrypted = AES(key).decrypt_cbc(encrypted, iv)
-    #print(decrypted.decode('utf-8'))
-    #print(key.decode('utf-8'))
-    #print(iv.decode('utf-8'))
-    text = 'Attack on dianat'
-    encrypted = encrypt(key, text)
+    plain = b'attack on dianat'
+    encrypted = AES(key).encrypt_cbc(plain, iv)
     print(dec(encrypted))
-    decrypted = decrypt(key, encrypted)
-    print(dec(decrypted))
+    decrypted = AES(key).decrypt_cbc(encrypted, iv)
+    print(decrypted)
+    print(len(plain))
+    print(key.decode('utf-8'))
+    print(iv.decode('utf-8'))
+
+    # alphabet = "abcdefghijklmnopqrstuvwxyz"
+    wordcost, maxword = load_dict()
+    cipher = encrypted
+
+    affine()
+    # text = 'Attack on dianat'
+    # encrypted = encrypt(key, text)
+    # print(dec(encrypted))
+    # decrypted = decrypt(key, encrypted)
+    # print(dec(decrypted))
 
 
